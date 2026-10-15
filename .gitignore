@@ -1,0 +1,18 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+artifacts/
+*.egg-info/
+
+dist/
+
+# Per-machine agent/MCP configs — `make install` generates these.
+.cursor/
+.qwen/
+.serena/
+
+# sensitive-guard
+.sensitive-terms
