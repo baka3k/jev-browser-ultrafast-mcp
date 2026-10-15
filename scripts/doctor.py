@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -28,7 +29,8 @@ ICONS = {OK: "✓", WARN: "!", FAIL: "✗"}
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 DEPS_PROBE = (
-    "import sys; import jev_ultrafast, jev_ultrafast.demo, jev_ultrafast.mcp_server, mcp; print(sys.version.split()[0])"
+    "import sys; import jev_ultrafast, jev_ultrafast.demo, jev_ultrafast.mcp_server, "
+    "jev_ultrafast.desktop, mcp; print(sys.version.split()[0])"
 )
 JS_FILES = ["jev_ultrafast/static/app.js", "jev_ultrafast/browser/snapshot.js"]
 
@@ -82,12 +84,12 @@ def check_toolchain(checks: list[Check], project: Path) -> str | None:
     else:
         checks.append(Check("uv.lock", OK, "matches pyproject.toml"))
 
-    entry_points = [project / ".venv" / "bin" / name for name in ("jev", "jev-mcp")]
+    entry_points = [project / ".venv" / "bin" / name for name in ("jev", "jev-mcp", "jev-desktop")]
     missing = [path.name for path in entry_points if not path.is_file()]
     if missing:
         checks.append(Check("Entry points", FAIL, f"missing in .venv/bin: {', '.join(missing)} — run 'make build'"))
     else:
-        checks.append(Check("Entry points", OK, ".venv/bin/jev, .venv/bin/jev-mcp"))
+        checks.append(Check("Entry points", OK, ".venv/bin/jev, .venv/bin/jev-mcp, .venv/bin/jev-desktop"))
     return uv
 
 
@@ -158,17 +160,46 @@ def check_browser(checks: list[Check], project: Path, uv: str | None) -> None:
     checks.append(Check("browser-harness", OK, f"v{report.get('version')}; daemon alive, browser ready, {chrome_note}"))
 
 
+def check_desktop(checks: list[Check]) -> None:
+    """macOS Accessibility readiness for the jev-desktop server. Never fatal."""
+    if sys.platform != "darwin":
+        checks.append(Check("Desktop AX", WARN, "skipped — macOS only"))
+        return
+    try:
+        from ApplicationServices import AXIsProcessTrusted
+    except ImportError:
+        checks.append(Check("Desktop AX", WARN, "pyobjc missing — run 'uv sync' (darwin-only dependency)"))
+        return
+    if AXIsProcessTrusted():
+        checks.append(Check("Desktop AX", OK, "Accessibility permission granted to this host app"))
+    else:
+        checks.append(Check(
+            "Desktop AX", WARN,
+            "Accessibility permission missing for the host app "
+            "(System Settings > Privacy & Security > Accessibility) — needed only for jev-desktop",
+        ))
+    allow = os.environ.get("JEV_DESKTOP_ALLOW", "com.google.Chrome (default)")
+    checks.append(Check("Desktop allowlist", OK, f"JEV_DESKTOP_ALLOW={allow}"))
+
+
 def check_mcp(checks: list[Check]) -> None:
     registered = 0
     detected = 0
     for agent in install_mcp.AGENTS:
-        state, path = install_mcp.registration_status(agent)
-        if state == "registered":
+        states = {
+            server.server_name: install_mcp.registration_status(agent, server.server_name)
+            for server in install_mcp.SERVERS.values()
+        }
+        browser_state, browser_path = states["jev-browser"]
+        desktop_state = states["jev-desktop"][0]
+        if browser_state == "registered" or desktop_state == "registered":
             registered += 1
-            checks.append(Check(f"MCP {agent.key}", OK, f"jev-browser registered in {path}"))
-        elif state == "not registered":
+            detail = "jev-browser registered" if browser_state == "registered" else "jev-browser absent"
+            detail += f"; jev-desktop {desktop_state} ({browser_path})"
+            checks.append(Check(f"MCP {agent.key}", OK, detail))
+        elif browser_state == "not registered":
             detected += 1
-            hint = f"detected but not configured ({path}) — run 'make install {agent.key}'"
+            hint = f"detected but not configured ({browser_path}) — run 'make install {agent.key}'"
             checks.append(Check(f"MCP {agent.key}", WARN, hint))
     if registered == 0:
         checks.append(Check("MCP", WARN, "no agent has jev-browser registered — run 'make install'"))
@@ -190,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     check_js(checks, project)
     check_env(checks, project)
     check_browser(checks, project, uv)
+    check_desktop(checks)
     check_mcp(checks)
 
     print(f"Jev Ultrafast doctor — {project}")

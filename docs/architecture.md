@@ -2,10 +2,11 @@
 
 ## Overview
 
-Jev Ultrafast is now split into two independent layers:
+Jev Ultrafast is split into independent layers:
 
 1. **Browser Layer** (`jev_ultrafast/browser/`): Low-level browser control
 2. **Agent Layer** (`jev_ultrafast/agent/`): Decision logic and model integration
+3. **Desktop Layer** (`jev_ultrafast/desktop/`): macOS app control over the Accessibility API
 
 ## Browser Layer
 
@@ -30,6 +31,32 @@ browser.close()
 - **Atomic observations**: Reads all controls in one CDP call
 - **Freshness guards**: Rechecks target validity after text generation
 - **Node identity**: Preserves actual DOM node references
+
+## Desktop Layer
+
+macOS twin of the browser layer: same element-table contract, Accessibility tree as the source.
+
+### Components
+- `ax.py`: `AXBackend` Protocol + pyobjc adapter (all platform imports live here, guarded)
+- `tree.py`: Pure AX-tree walker -> indexed element table (budgeted traversal, closed-menu rule)
+- `app.py`: `DesktopApp` facade (`observe/fresh/act/close`), session-persistent element ids
+- `README.md`: Interface documentation
+
+### Interface
+```python
+DesktopApp("com.google.Chrome", backend=None) -> app instance
+app.observe() -> state dict (same action shape as the browser table)
+app.act(action, page, text) -> trusted AXPress / AXValue write, guard-checked
+app.fresh(page, action) -> bool (guard = attributes + parent path + position)
+app.close()
+```
+
+### Key features
+- **Contract parity**: `{id, kind, label, role, value, node}` actions feed `model.action_space()` and MCP formatting unchanged
+- **Identity anchoring**: guards carry parent path + position; ids persist across observations for living elements and are never reused
+- **Bounded traversal**: node/depth budgets; closed `AXMenu` subtrees are never descended into
+- **Trusted execution**: `AXPress`/`AXValue` writes verified by read-back; secure fields never enumerated
+- **Platform gating**: pyobjc is marker-gated to darwin; the rest of the package imports and tests on any OS
 
 ## Agent Layer
 
@@ -141,6 +168,8 @@ while True:
 
 ## Testing
 
-Browser and agent layers are tested independently:
+Browser, desktop, and agent layers are tested independently:
 - `tests/test_agent.py`: Agent logic, model integration, action selection
+- `tests/test_desktop.py`, `tests/test_desktop_actions.py`, `tests/test_desktop_mcp.py`: AX tree walking, guard discipline, MCP tools (fake backend, offline)
 - Browser tests: DOM reading, action execution, staleness detection
+- Live checks stay out of pytest: `scripts/check_guards.py` (browser), `scripts/check_ax.py` (desktop, skips when Chrome/Accessibility is unavailable)

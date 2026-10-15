@@ -5,11 +5,19 @@ description = "A browser agent that chooses instead of generating."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["browser-harness==0.1.13", "httpx[http2]>=0.28,<1", "mcp>=1.0.0"]
+dependencies = [
+    "browser-harness==0.1.13",
+    "httpx[http2]>=0.28,<1",
+    "mcp>=1.0.0",
+    "pyobjc-framework-ApplicationServices>=12,<13; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=12,<13; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=12,<13; sys_platform == 'darwin'",
+]
 
 [project.scripts]
 jev = "jev_ultrafast.demo:main"
 jev-mcp = "jev_ultrafast.mcp_server:main"
+jev-desktop = "jev_ultrafast.desktop_mcp:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -176,6 +176,23 @@ flowchart LR
 
 The same Browser Harness + Chrome layer serves both paths: through the MCP server your coding agent decides each step from the element table; through the standalone loop TypeSafe decides.
 
+### Desktop MCP server (`jev-desktop`, opt-in)
+
+The same indexed-element loop works for **desktop apps on macOS** through the Accessibility (AX) API. The observation source changes; the contract does not: numbered elements, one operation + target per step, guard-checked execution, zero model calls and zero API keys.
+
+```bash
+make install-all [agent]  # register jev-browser AND jev-desktop (explicit opt-in)
+```
+
+| Tool | Arguments | Does |
+| --- | --- | --- |
+| `desktop_attach` | `app` | Attach to one app by bundle id — allowlisted via `JEV_DESKTOP_ALLOW` (default: `com.google.Chrome` only) |
+| `desktop_observe` | — | App title, text preview, and numbered interactive elements |
+| `desktop_act` | `action_id`, `text?` | Click (`AXPress`), type (`AXValue` write + read-back), or wait — stale decisions are refused |
+| `desktop_close` | — | Detach |
+
+Scope and safety: macOS only (pyobjc, marker-gated dependency). v1 covers app chrome UI — menu bar, tabs, fields, window controls — verified against Chrome ([spike](docs/plans/desktop-app-layer/spike-activation.md)); web content stays with the CDP browser layer. An AX-trusted process can drive *any* app, so the allowlist is deliberately tight and `jev-desktop` is never registered by `make install` alone. Live verification: `make check-desktop` (skips when Chrome/Accessibility is unavailable). See [jev_ultrafast/desktop/README.md](jev_ultrafast/desktop/README.md).
+
 ### Tools
 
 | Tool | Arguments | Does |
@@ -304,11 +321,14 @@ See [examples/external_agent.py](examples/external_agent.py) and [docs/architect
 | --- | --- |
 | [jev_ultrafast/browser/browser.py](jev_ultrafast/browser/browser.py) | CDP connection, DOM observation, action execution |
 | [jev_ultrafast/browser/snapshot.js](jev_ultrafast/browser/snapshot.js) | Atomic DOM snapshot, indexed controls, freshness guards |
+| [jev_ultrafast/desktop/](jev_ultrafast/desktop/) | macOS AX layer: `ax.py` bridge, `tree.py` walker, `app.py` facade |
 | [jev_ultrafast/agent/agent.py](jev_ultrafast/agent/agent.py) | The complete loop and text-helper handoff |
 | [jev_ultrafast/agent/model.py](jev_ultrafast/agent/model.py) | TypeSafe operation/target heads and text generation |
 | [jev_ultrafast/mcp_server.py](jev_ultrafast/mcp_server.py) | `jev-browser` MCP server |
+| [jev_ultrafast/desktop_mcp.py](jev_ultrafast/desktop_mcp.py) | `jev-desktop` MCP server (opt-in) |
 | [jev_ultrafast/demo.py](jev_ultrafast/demo.py) | Local inspector (`jev`) |
-| [scripts/install_mcp.py](scripts/install_mcp.py) | MCP registration for coding agents |
+| [scripts/install_mcp.py](scripts/install_mcp.py) | MCP registration for coding agents (both servers) |
+| [scripts/check_ax.py](scripts/check_ax.py) | Live desktop AX check against real Chrome |
 | [scripts/doctor.py](scripts/doctor.py) | Stack health check |
 
 ## Development

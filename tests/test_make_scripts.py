@@ -126,3 +126,112 @@ def test_env_key_states_never_exposes_values(tmp_path):
     states = install_mcp.env_key_states(env)
     assert states == {"TYPESAFE_API_KEY": True, "TEXT_MODEL_API_KEY": False}
     assert "secret-value" not in json.dumps(install_mcp.env_key_states(env))
+
+
+# --- two-server registry (jev-browser + jev-desktop) ---------------------------
+
+
+def test_server_selection_defaults_to_browser_and_is_opt_in():
+    assert [s.server_name for s in install_mcp.resolve_servers("jev-browser")] == ["jev-browser"]
+    assert [s.server_name for s in install_mcp.resolve_servers("all")] == ["jev-browser", "jev-desktop"]
+    assert [s.server_name for s in install_mcp.resolve_servers("jev-desktop")] == ["jev-desktop"]
+    with pytest.raises(SystemExit):
+        install_mcp.resolve_servers("not-a-server")
+
+
+def test_server_argv_takes_the_entry_point(tmp_path):
+    argv = install_mcp.server_argv(tmp_path, "/usr/local/bin/uv", "jev-desktop")
+    assert argv[-1] == "jev-desktop"
+
+
+def keyed_agent(key: str, config_path: Path) -> install_mcp.Agent:
+    return install_mcp.Agent(
+        key=key, label=key.title(), json_keys=["mcpServers", install_mcp.SERVER_NAME],
+        config_path=lambda: config_path, installed=lambda: True,
+    )
+
+
+def test_two_servers_coexist_and_status_is_per_server(tmp_path):
+    config = tmp_path / "mcp.json"
+    browser_entry = {"command": "uv", "args": ["run", "jev-mcp"]}
+    desktop_entry = {"command": "uv", "args": ["run", "jev-desktop"]}
+
+    install_mcp.upsert_json_path(config, ["mcpServers", "jev-browser"], browser_entry)
+    before = config.read_text()
+    install_mcp.upsert_json_path(config, ["mcpServers", "jev-desktop"], desktop_entry)
+
+    data = json.loads(config.read_text())
+    assert data["mcpServers"]["jev-browser"] == browser_entry
+    assert data["mcpServers"]["jev-desktop"] == desktop_entry
+    assert json.loads(before)["mcpServers"]["jev-browser"] == browser_entry
+
+    agent = keyed_agent("cursor", config)
+    assert install_mcp.registration_status(agent, "jev-browser")[0] == "registered"
+    assert install_mcp.registration_status(agent, "jev-desktop")[0] == "registered"
+
+    partial = keyed_agent("cursor", tmp_path / "partial.json")
+    (tmp_path / "partial.json").write_text(json.dumps({"mcpServers": {"jev-browser": browser_entry}}))
+    assert install_mcp.registration_status(partial, "jev-browser")[0] == "registered"
+    assert install_mcp.registration_status(partial, "jev-desktop")[0] == "not registered"
+
+
+def test_codex_toml_holds_both_servers_without_merging(tmp_path):
+    config = tmp_path / "config.toml"
+    assert str(config).startswith(str(tmp_path))  # install_agent writes for real: never a user config
+    codex = install_mcp.Agent(
+        key="codex", label="Codex", json_keys=["mcpServers", install_mcp.SERVER_NAME],
+        config_path=lambda: config, installed=lambda: True,
+    )
+    uv = "/usr/local/bin/uv"
+
+    install_mcp.install_agent(codex, tmp_path, uv, False, install_mcp.SERVERS["jev-browser"])
+    install_mcp.install_agent(codex, tmp_path, uv, False, install_mcp.SERVERS["jev-desktop"])
+
+    text = config.read_text()
+    assert text.count("[mcp_servers.") == 2
+    assert 'mcp_servers."jev-browser"' in text and 'mcp_servers."jev-desktop"' in text
+    assert install_mcp.registration_status(codex, "jev-browser")[0] == "registered"
+    assert install_mcp.registration_status(codex, "jev-desktop")[0] == "registered"
+
+
+def test_atomic_write_leaves_no_temp_file_and_fails_clean(monkeypatch, tmp_path):
+    config = tmp_path / "settings.json"
+    config.write_text('{"mcpServers": {}}')
+    real_replace = install_mcp.os.replace
+    monkeypatch.setattr(install_mcp.os, "replace", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError):
+        install_mcp.upsert_json_path(config, ["mcpServers", "jev-browser"], {"command": "uv"})
+    assert json.loads(config.read_text()) == {"mcpServers": {}}
+    assert not list(tmp_path.glob("*.jev-tmp"))
+    monkeypatch.setattr(install_mcp.os, "replace", real_replace)
+    install_mcp.upsert_json_path(config, ["mcpServers", "jev-browser"], {"command": "uv"})
+    assert not list(tmp_path.glob("*.jev-tmp"))
+
+
+def test_one_broken_agent_config_does_not_abort_the_rest(monkeypatch, tmp_path):
+    uv = "/usr/local/bin/uv"
+    good_config = tmp_path / "good.json"
+    broken_config = tmp_path / "broken.json"
+
+    def make(key, path):
+        return install_mcp.Agent(
+            key=key, label=key.title(), json_keys=["mcpServers", key],
+            config_path=lambda p=path: p, installed=lambda: True,
+        )
+
+    broken = make("broken", broken_config)
+    original_load = install_mcp.load_json_file
+
+    def load_or_raise(path):
+        if path == broken_config:
+            raise ValueError("unreadable")
+        return original_load(path)
+
+    monkeypatch.setattr(install_mcp, "load_json_file", load_or_raise)
+    failures = install_mcp.install_selection(
+        [broken, make("good", good_config)],
+        [install_mcp.SERVERS["jev-browser"]], tmp_path, uv, False,
+    )
+    assert len(failures) == 1 and failures[0].startswith("broken/")
+    installed = json.loads(good_config.read_text())["mcpServers"]["jev-browser"]
+    assert installed["command"] == uv

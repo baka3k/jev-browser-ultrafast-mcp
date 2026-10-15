@@ -1,12 +1,13 @@
 # Jev Ultrafast — build, install, doctor.
 #   make build              prepare the full environment (deps, .env, JS checks, lint, tests, package)
 #   make install [agent]    register the jev-browser MCP server with coding agents (default: all)
+#   make install-all        also register jev-desktop (macOS AX; explicit opt-in)
 #   make doctor             health check for the whole browser stack
 
 AGENT ?= all
 
 # Accept a positional agent: make install cursor
-ifneq ($(filter install install-dry,$(MAKECMDGOALS)),)
+ifneq ($(filter install install-dry install-all,$(MAKECMDGOALS)),)
   ifneq ($(word 2,$(MAKECMDGOALS)),)
     AGENT := $(word 2,$(MAKECMDGOALS))
   endif
@@ -15,15 +16,17 @@ endif
 KNOWN_AGENTS := all claude codex commandcode cmd cmdcode vscode code vs-code vs cursor qwen ayg agy agv anti antigravity gemini opencode zcode
 
 .DEFAULT_GOAL := help
-.PHONY: help sync build js-check lint test install install-dry doctor clean
+.PHONY: help sync build js-check lint test install install-all install-dry check-desktop doctor clean
 
 help:
 	@echo "Jev Ultrafast"
 	@echo "  make build                prepare environment: deps, .env scaffold, JS checks, lint, tests, package"
-	@echo "  make install [agent]      register the MCP server for: claude codex commandcode vscode cursor"
+	@echo "  make install [agent]      register jev-browser for: claude codex commandcode vscode cursor"
 	@echo "                            qwen ayg (Antigravity) gemini opencode zcode — or all (default)"
+	@echo "  make install-all [agent]  also register jev-desktop (macOS AX) — explicit opt-in"
 	@echo "  make install-dry [agent]  show what install would write, change nothing"
-	@echo "  make doctor               health check: deps, API keys, Chrome, browser-harness, MCP registrations"
+	@echo "  make check-desktop        live AX check against real Chrome (skips when unavailable)"
+	@echo "  make doctor               health check: deps, API keys, Chrome, browser-harness, AX, MCP"
 	@echo "  make sync | js-check | lint | test | clean"
 
 sync:
@@ -50,8 +53,14 @@ test:
 install: sync
 	@uv run python scripts/install_mcp.py --agent "$(AGENT)" --project "$(CURDIR)"
 
+install-all: sync
+	@uv run python scripts/install_mcp.py --agent "$(AGENT)" --server all --project "$(CURDIR)"
+
 install-dry:
 	@uv run python scripts/install_mcp.py --agent "$(AGENT)" --project "$(CURDIR)" --dry-run
+
+check-desktop:
+	@uv run python scripts/check_ax.py
 
 doctor:
 	@command -v uv >/dev/null 2>&1 || { echo "uv is not installed. Install: curl -LsSf https://astral.sh/uv/install.sh | sh"; exit 1; }
