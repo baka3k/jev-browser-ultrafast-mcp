@@ -2,12 +2,12 @@
 
 # Jev Ultrafast ⚡
 
-**A browser agent with a dynamic, indexed action space.**
+**A browser agent with a dynamic, indexed action space — now driving macOS desktop apps too.**
 
 Give it one natural-language goal. [TypeSafe's Jev](https://docs.typesafe.ai/introduction) picks the next operation and the target element in a single request. A small LLM writes text only when the operation is `TYPE_TEXT`. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript.
 
 > [!IMPORTANT]
-> **Ships with a ready-made MCP server — `jev-browser`.** Register it once with `make install` and your existing coding agents — **Claude Code, Codex, Qwen Code, ZCode**, Cursor, VS Code, Gemini CLI, OpenCode, Google Antigravity — drive a real, indexed browser through `jev_navigate` / `jev_observe` / `jev_act` / `jev_close` on their own license. No extra API keys: your agent is the brain, the MCP server only observes and executes. See [MCP server](#mcp-server-jev-browser).
+> **Ships with ready-made MCP servers.** `jev-browser` registers with `make install` and your existing coding agents — **Claude Code, Codex, Qwen Code, ZCode**, Cursor, VS Code, Gemini CLI, OpenCode, Google Antigravity — drive a real, indexed browser through `jev_navigate` / `jev_observe` / `jev_act` / `jev_close` on their own license. `jev-desktop` (opt-in via `make install-all`) does the same for macOS desktop apps through the Accessibility API. No extra API keys: your agent is the brain, the servers only observe and execute. See [MCP servers](#mcp-servers).
 
 <a href="docs/demo.mp4"><img src="docs/demo.gif" alt="A real Google Flights search at 1× speed, with generated city names and dynamic operation/target decisions" width="100%" /></a>
 
@@ -31,7 +31,9 @@ page → element table → TypeSafe (operation + targets) → matching target �
                                                        └→ TYPE_TEXT → small LLM → text → browser
 ```
 
-There are no site-specific action scripts or prepared field values. Every executed target is resolved from an observed DOM node, rechecked for freshness and click occlusion, and the outcome is verified independently — a `DONE` choice alone is not proof of success.
+There are no site-specific action scripts or prepared field values. Every executed target is resolved from an observed node, rechecked for freshness and click occlusion, and the outcome is verified independently — a `DONE` choice alone is not proof of success.
+
+The **desktop layer** keeps the contract and swaps the observation source: `jev_ultrafast/desktop/` reads the macOS Accessibility tree into the same `{id, kind, label, role, value}` table (menu bar, tabs, fields, window controls), maps `AXPress` to click and verified `AXValue` writes to fill, and refuses any action whose guard — attributes, parent path, and position — changed since the decision.
 
 ## Installation
 
@@ -42,6 +44,7 @@ There are no site-specific action scripts or prepared field values. Every execut
 - **Google Chrome** — see [Chrome remote debugging](#chrome-remote-debugging) below
 - **Browser Harness** — see [Browser Harness](#browser-harness) below
 - **API keys** — see [TypeSafe API](#typesafe-api) below
+- **macOS** — only for the desktop layer (pyobjc is installed automatically on darwin)
 
 ### Steps
 
@@ -95,28 +98,9 @@ uv run browser-harness mac-approve
 TypeSafe is the decision engine of the agent loop: each step sends it the element table, and it returns the operation plus target in a single request. Without a key, the demo and library loops cannot choose actions.
 
 - Get a key from [TypeSafe](https://docs.typesafe.ai), put it in `.env` as `TYPESAFE_API_KEY`. Requests go to `https://api.typesafe.ai/v1`; the model defaults to `jev-latest` (override with `TYPESAFE_MODEL`).
-- **Who needs it**: the demo inspector and the Python library loop. **The MCP server does not** — there your coding agent (Claude Code, Codex, Qwen Code, ZCode, …) is the brain and the server only observes and executes.
+- **Who needs it**: the demo inspector and the Python library loop. **The MCP servers do not** — there your coding agent (Claude Code, Codex, Qwen Code, ZCode, …) is the brain and the servers only observe and execute.
 - `TYPE_TEXT` additionally needs `TEXT_MODEL_API_KEY` (any OpenAI-compatible provider — see [Configuration](#configuration)). Without it, everything works except typing text.
 - Only the demo, live examples, and recording scripts make paid TypeSafe calls; tests are offline and never do.
-
-### Steps
-
-```bash
-git clone https://github.com/browser-use/jev-ultrafast.git
-cd jev-ultrafast
-make build
-```
-
-`make build` prepares everything: dependencies, a `.env` scaffold, JS syntax checks, lint, tests, and the package build.
-
-Add your keys to `.env`, then start the inspector:
-
-```bash
-uv run jev
-# open http://127.0.0.1:8766 → Start demo → Run automatically
-```
-
-The inspector shows numbered elements, operation/target probabilities, and executed actions. **Choose next** pauses before execution. When Chrome prompts for remote debugging, allow it; if the connection needs fixing, run `uv run browser-harness --doctor`.
 
 ## Configuration
 
@@ -131,6 +115,7 @@ The inspector shows numbered elements, operation/target probabilities, and execu
 | `TEXT_MODEL` | no | `inception/mercury-2.5` | Text model id |
 | `TEXT_MODEL_REASONING` | no | `none` | Set to `none` to disable reasoning in the text helper |
 | `TYPESAFE_DEMO_PORT` | no | `8766` | Inspector port |
+| `JEV_DESKTOP_ALLOW` | no | `com.google.Chrome` | Comma-separated bundle ids the desktop MCP may attach to |
 
 ### URLs
 
@@ -142,9 +127,9 @@ The inspector shows numbered elements, operation/target probabilities, and execu
 
 The text helper works with any OpenAI-compatible provider — DeepSeek (`https://api.deepseek.com/v1`, `deepseek-chat` is the code-level fallback), OpenAI, Gemini, GLM, or local Ollama. Set `TEXT_MODEL_BASE_URL`, `TEXT_MODEL`, and `TEXT_MODEL_API_KEY` accordingly. For a programmatic custom provider, see [docs/text-provider-guide.md](docs/text-provider-guide.md) and [examples/custom_text_provider.py](examples/custom_text_provider.py).
 
-## MCP server (`jev-browser`)
+## MCP servers
 
-The browser layer ships as a standalone MCP stdio server (`jev-mcp`) so coding agents — Claude Code, Codex, Qwen Code, ZCode, Cursor, VS Code, and any other MCP client — can drive a real browser with their existing licenses. The server only observes and executes; **your coding agent is the brain** and makes every decision from the indexed element table. The server itself calls no model, so no API keys are required to use it.
+### `jev-browser` (registered by default)
 
 ```mermaid
 flowchart LR
@@ -163,37 +148,24 @@ flowchart LR
         TXT["text LLM<br/>TYPE_TEXT only"]
     end
 
-    MCP["jev-browser MCP server (jev-mcp)<br/>jev_navigate · jev_observe · jev_act · jev_close"]
+    MCP["jev-browser MCP server<br/>jev_navigate · jev_observe · jev_act · jev_close"]
+    DESK["jev-desktop MCP server (opt-in)<br/>desktop_attach · desktop_observe · desktop_act · desktop_close"]
     BH["Browser Harness daemon"]
     CHROME["Chrome<br/>jev's own background tab · shared profile"]
+    AX["macOS Accessibility (AX)"]
+    APPS["Desktop apps<br/>menu bar · tabs · fields · controls"]
 
     agents -- "MCP stdio — agent decides, server executes" --> MCP
+    agents -. "explicit opt-in" .-> DESK
     TS --- TXT
     MCP --> BH
     standalone --> BH
     BH -- "CDP" --> CHROME
+    DESK -- "AX API" --> AX
+    AX --> APPS
 ```
 
-The same Browser Harness + Chrome layer serves both paths: through the MCP server your coding agent decides each step from the element table; through the standalone loop TypeSafe decides.
-
-### Desktop MCP server (`jev-desktop`, opt-in)
-
-The same indexed-element loop works for **desktop apps on macOS** through the Accessibility (AX) API. The observation source changes; the contract does not: numbered elements, one operation + target per step, guard-checked execution, zero model calls and zero API keys.
-
-```bash
-make install-all [agent]  # register jev-browser AND jev-desktop (explicit opt-in)
-```
-
-| Tool | Arguments | Does |
-| --- | --- | --- |
-| `desktop_attach` | `app` | Attach to one app by bundle id — allowlisted via `JEV_DESKTOP_ALLOW` (default: `com.google.Chrome` only) |
-| `desktop_observe` | — | App title, text preview, and numbered interactive elements |
-| `desktop_act` | `action_id`, `text?` | Click (`AXPress`), type (`AXValue` write + read-back), or wait — stale decisions are refused |
-| `desktop_close` | — | Detach |
-
-Scope and safety: macOS only (pyobjc, marker-gated dependency). v1 covers app chrome UI — menu bar, tabs, fields, window controls — verified against Chrome ([spike](docs/plans/desktop-app-layer/spike-activation.md)); web content stays with the CDP browser layer. An AX-trusted process can drive *any* app, so the allowlist is deliberately tight and `jev-desktop` is never registered by `make install` alone. Live verification: `make check-desktop` (skips when Chrome/Accessibility is unavailable). See [jev_ultrafast/desktop/README.md](jev_ultrafast/desktop/README.md).
-
-### Tools
+The same Browser Harness + Chrome layer serves both standalone paths: through the MCP server your coding agent decides each step from the element table; through the standalone loop TypeSafe decides.
 
 | Tool | Arguments | Does |
 | --- | --- | --- |
@@ -203,24 +175,25 @@ Scope and safety: macOS only (pyobjc, marker-gated dependency). v1 covers app ch
 | `jev_close` | — | Close the browser session |
 | `jev_config` | API key/url/model fields | Update TypeSafe/text-model config at runtime |
 
-### One-command install
+#### One-command install
 
 ```bash
-make install              # register with every detected agent
+make install              # register jev-browser with every detected agent
 make install cursor       # one agent only (claude, codex, qwen, zcode, ...)
+make install-all [agent]  # also register jev-desktop (explicit opt-in)
 make install-dry          # show what would be written, change nothing
-make doctor               # deps, API keys, Chrome, browser-harness, MCP registrations
+make doctor               # deps, API keys, Chrome, browser-harness, AX permission, MCP registrations
 uv run python scripts/install_mcp.py --status   # current registration status
 ```
 
-Registration is idempotent: re-running replaces only the `jev-browser` entry and leaves every other configured server untouched.
+Registration is idempotent: re-running replaces only the `jev-*` entries and leaves every other configured server untouched. Writes to agent configs are atomic, and one broken config never aborts the rest.
 
-### Supported agents
+#### Supported agents
 
 | Key | Agent | Config file written |
 | --- | --- | --- |
 | `claude` | Claude Code | `~/.claude.json` (`claude mcp add`, user scope) |
-| `codex` | OpenAI Codex CLI | `~/.codex/config.toml` (`[mcp_servers."jev-browser"]`) |
+| `codex` | OpenAI Codex CLI | `~/.codex/config.toml` (`[mcp_servers."…"]`) |
 | `commandcode` | Command Code | `~/.commandcode/mcp.json` |
 | `vscode` | VS Code | `…/Code/User/mcp.json` (`servers`) |
 | `cursor` | Cursor | `~/.cursor/mcp.json` |
@@ -232,7 +205,7 @@ Registration is idempotent: re-running replaces only the `jev-browser` entry and
 
 Credentials are **never written into agent configs**. Every entry spawns `uv --directory <project> run --env-file <project>/.env jev-mcp`, so the server loads keys from the git-ignored `.env` at startup.
 
-### Manual registration (any MCP client)
+#### Manual registration (any MCP client)
 
 ```json
 {
@@ -255,9 +228,9 @@ Credentials are **never written into agent configs**. Every entry spawns `uv --d
 
 Replace `/absolute/path/to/uv` with your real `uv` binary (`which uv`, typically `~/.local/bin/uv`) and `/absolute/path/to/jev-ultrafast` with the project directory. The absolute `command` matters: some agents spawn MCP servers without your shell's `PATH`, where a bare `uv` fails to resolve. `--env-file` loads the git-ignored `.env` so keys never appear in the agent config; drop that flag if you keep no `.env`.
 
-Or run it by hand to verify: `uv run jev-mcp` from the project directory.
+Or run it by hand to verify: `uv run jev-mcp`.
 
-### How agents use it
+#### How agents use it
 
 Once registered, just give your agent a goal in its normal chat — Claude Code, Codex, Qwen Code, and ZCode all drive the same three-tool loop:
 
@@ -276,6 +249,19 @@ Rules the host agent should follow:
 - Call `jev_observe` after every navigation or action — element ids change with each snapshot, so never reuse an id from an older observation.
 - Pass `text` for fill/type actions; click and select take only `action_id`.
 - If `jev_act` reports an error, observe again and re-decide instead of retrying the same id.
+
+### `jev-desktop` (explicit opt-in)
+
+The same indexed-element loop for **desktop apps on macOS**, over the Accessibility (AX) API. The observation source changes; the contract does not: numbered elements, one operation + target per step, guard-checked execution, zero model calls and zero API keys.
+
+| Tool | Arguments | Does |
+| --- | --- | --- |
+| `desktop_attach` | `app` | Attach to one app by bundle id — allowlisted via `JEV_DESKTOP_ALLOW` (default: `com.google.Chrome` only) |
+| `desktop_observe` | — | App title, text preview, and numbered interactive elements |
+| `desktop_act` | `action_id`, `text?` | Click (`AXPress`), type (`AXValue` write + read-back), or wait — stale decisions are refused |
+| `desktop_close` | — | Detach |
+
+Scope and safety: an AX-trusted process can drive *any* app on the machine, so the allowlist is deliberately tight, `make install` never registers this server, and the agent-side attach rejects anything outside `JEV_DESKTOP_ALLOW`. v1 covers app chrome UI — menu bar, tabs, fields, window controls — verified against Chrome ([spike](docs/plans/desktop-app-layer/spike-activation.md)); web content stays with the CDP browser layer. Live verification: `make check-desktop` (skips with an actionable reason when Chrome or the Accessibility permission is unavailable). See [jev_ultrafast/desktop/README.md](jev_ultrafast/desktop/README.md).
 
 ## Use as a library
 
@@ -313,6 +299,19 @@ action = next(a for a in page["actions"] if a["id"] == "e2")
 browser.act(action, page, text="hello")
 ```
 
+The desktop layer follows the same shape:
+
+```python
+from jev_ultrafast.desktop import DesktopApp
+
+app = DesktopApp("com.google.Chrome")   # backend=… is injectable for offline tests
+page = app.observe()                    # numbered element table (menu bar, tabs, fields)
+
+action = next(a for a in page["actions"] if a["id"] == "e2")
+app.act(action, page)                   # AXPress / AXValue write, guard-checked first
+app.close()
+```
+
 See [examples/external_agent.py](examples/external_agent.py) and [docs/architecture.md](docs/architecture.md). [examples/flights.py](examples/flights.py) runs the verified flight search (`--keep-open` keeps the browser open).
 
 ## Project layout
@@ -328,6 +327,7 @@ See [examples/external_agent.py](examples/external_agent.py) and [docs/architect
 | [jev_ultrafast/desktop_mcp.py](jev_ultrafast/desktop_mcp.py) | `jev-desktop` MCP server (opt-in) |
 | [jev_ultrafast/demo.py](jev_ultrafast/demo.py) | Local inspector (`jev`) |
 | [scripts/install_mcp.py](scripts/install_mcp.py) | MCP registration for coding agents (both servers) |
+| [scripts/ax_probe.py](scripts/ax_probe.py) | Chrome AX activation probe (spike tooling) |
 | [scripts/check_ax.py](scripts/check_ax.py) | Live desktop AX check against real Chrome |
 | [scripts/doctor.py](scripts/doctor.py) | Stack health check |
 
@@ -341,11 +341,13 @@ node --check jev_ultrafast/browser/snapshot.js
 uv build
 ```
 
-Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. Live examples and the recording scripts (`scripts/record_flights.py`, `scripts/render_demo.py`) make paid API calls; credentials and raw traces stay ignored. Run boundaries and raw evidence live in [docs/performance.md](docs/performance.md).
+`make build` runs all of them. Tests are offline — `tests/test_agent.py` contracts the loop, `tests/test_desktop*.py` and `tests/test_check_ax.py` contract the desktop layer against a fake AX backend, `tests/test_make_scripts.py` contracts the installer; none of them call paid APIs. `uv run python scripts/check_guards.py` checks real browser controls and `make check-desktop` checks real desktop AX in a local Chrome — both live checks make no model calls and skip cleanly when their environment is unavailable. Live examples and the recording scripts (`scripts/record_flights.py`, `scripts/render_demo.py`) make paid API calls; credentials and raw traces stay ignored. Run boundaries and raw evidence live in [docs/performance.md](docs/performance.md).
 
 ## Scope and limits
 
 The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
+
+The desktop layer is macOS-only and covers app chrome UI — menu bar, window controls, tabs, editable fields — verified against Chrome; web content remains the browser layer's job (see the [activation spike](docs/plans/desktop-app-layer/spike-activation.md)). There are no `select`, scroll, or keyboard-synthesis actions yet. Element ids persist while an element lives and are never reused, but they change when the element changes; observe after every action. The AX reader handles common controls, not every accessibility implementation — apps that draw their UI without accessibility metadata are invisible to it.
 
 ---
 
