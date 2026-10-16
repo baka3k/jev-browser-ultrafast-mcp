@@ -37,6 +37,13 @@ class DesktopApp:
         if app is None:
             raise StaleState(f"{self.bundle_id} is not running. Start it, then attach again.")
         self._app = app
+        try:
+            # Electron apps (VS Code, ZCode, ...) only build their full AX tree when an
+            # assistive client opts in. Chrome and native apps refuse the attribute; that
+            # refusal is fine and ignored.
+            self.backend.set(app, "AXManualAccessibility", True)
+        except Exception:  # noqa: BLE001 - best effort: unsupported apps keep their native tree
+            pass
 
     def observe(self) -> dict:
         self._attach()

@@ -39,7 +39,8 @@ class FakeBackend:
         self.app = app
         self.bundle = "com.test.app"
         self.copy_calls = 0
-        self.mutations = []
+        self.mutations = []  # UI mutations only; the attach-time opt-in is tracked apart
+        self.opt_ins = []
 
     def application(self, bundle_id):
         return self.app if bundle_id == self.bundle else None
@@ -59,6 +60,9 @@ class FakeBackend:
         }.get(attribute)
 
     def set(self, element, attribute, value):
+        if attribute == "AXManualAccessibility":
+            self.opt_ins.append(element)
+            return False  # Electron opt-in: config, not a UI mutation
         self.mutations.append(("set", attribute))
         if element.dead:
             raise ElementGone(f"set {attribute}")
@@ -196,6 +200,34 @@ def test_closed_menus_are_never_descended_open_menus_are():
     assert "File item 0" not in [a["label"] for a in page["actions"]]
 
 
+def test_attach_opts_into_electron_accessibility():
+    from jev_ultrafast.desktop import DesktopApp
+
+    backend = make_app(buttons=1)
+    app = DesktopApp(backend.bundle, backend=backend)
+    app.observe()
+    assert backend.opt_ins == [backend.app]  # AXManualAccessibility attempted on attach
+    assert backend.mutations == []  # and it is config, not a UI mutation
+    app.close()
+
+
+def test_attach_survives_backends_that_refuse_the_opt_in():
+    from jev_ultrafast.desktop import DesktopApp
+
+    backend = make_app(buttons=1)
+    original_set = backend.set
+
+    def refuse_manual(element, attribute, value):
+        if attribute == "AXManualAccessibility":
+            return False
+        return original_set(element, attribute, value)
+
+    backend.set = refuse_manual  # Chrome-style refusal of the Electron attribute
+    app = DesktopApp(backend.bundle, backend=backend)
+    assert app.observe()["actions"]  # attach and observation still work
+    app.close()
+
+
 def test_identical_guards_still_get_distinct_ids():
     from jev_ultrafast.desktop import DesktopApp
 
@@ -302,7 +334,7 @@ class FakeAXModule:
     def AXUIElementPerformAction(self, element, action):
         return self.copy_code
 
-    def AXUIElementIsAttributeSettable(self, element, attribute):
+    def AXUIElementIsAttributeSettable(self, element, attribute, _):
         return (self.copy_code, True)
 
     def AXUIElementCopyActionNames(self, element, _):

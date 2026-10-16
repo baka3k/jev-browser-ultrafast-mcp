@@ -42,7 +42,10 @@ consume them unchanged. Roles are mapped to the browser vocabulary
 
 ## Scope (v1)
 
-macOS only (pyobjc, marker-gated dependency). Verified against Chrome chrome UI — menu
-bar, window controls — per `docs/plans/desktop-app-layer/spike-activation.md`; web
-content stays with the CDP browser layer. Windows UIA / Linux AT-SPI are a reserved
-seam (`AXBackend` Protocol), deliberately unimplemented.
+macOS only (pyobjc, marker-gated dependency). Every attach best-effort sets
+`AXManualAccessibility` — the Electron opt-in — so Electron apps (VS Code, ZCode, …)
+expose their full content tree, while Chrome and native apps refuse the attribute and
+keep their native tree. Verified against Chrome chrome UI — menu bar, window controls —
+per `docs/plans/desktop-app-layer/spike-activation.md`; browser web content stays with
+the CDP layer. Windows UIA / Linux AT-SPI are a reserved seam (`AXBackend` Protocol),
+deliberately unimplemented.

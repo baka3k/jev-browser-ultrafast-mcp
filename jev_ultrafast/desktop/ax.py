@@ -125,7 +125,7 @@ class PyobjcBackend:
         return error == 0
 
     def is_settable(self, element: Any, attribute: str) -> bool:
-        error, settable = self._ax.AXUIElementIsAttributeSettable(element, attribute)
+        error, settable = self._ax.AXUIElementIsAttributeSettable(element, attribute, None)
         if error == INVALID_UI_ELEMENT:
             raise ElementGone(f"is_settable {attribute}")
         return error == 0 and bool(settable)
