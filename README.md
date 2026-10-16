@@ -352,6 +352,7 @@ See [examples/external_agent.py](examples/external_agent.py) and [docs/architect
 | [jev_ultrafast/browser/browser.py](jev_ultrafast/browser/browser.py) | CDP connection, DOM observation, action execution |
 | [jev_ultrafast/browser/snapshot.js](jev_ultrafast/browser/snapshot.js) | Atomic DOM snapshot, indexed controls, freshness guards |
 | [jev_ultrafast/desktop/](jev_ultrafast/desktop/) | macOS AX layer: `ax.py` bridge, `tree.py` walker, `app.py` facade |
+| [jev_ultrafast/terminal/](jev_ultrafast/terminal/) | Terminal driving: `TerminalSession` (pty) + `TmuxSession` (attachable in iTerm2) |
 | [jev_ultrafast/agent/agent.py](jev_ultrafast/agent/agent.py) | The complete loop and text-helper handoff |
 | [jev_ultrafast/agent/model.py](jev_ultrafast/agent/model.py) | TypeSafe operation/target heads and text generation |
 | [jev_ultrafast/mcp_server.py](jev_ultrafast/mcp_server.py) | `jev-browser` MCP server |
@@ -372,7 +373,7 @@ node --check jev_ultrafast/browser/snapshot.js
 uv build
 ```
 
-`make build` runs all of them. Tests are offline — `tests/test_agent.py` contracts the loop, `tests/test_desktop*.py` and `tests/test_check_ax.py` contract the desktop layer against a fake AX backend, `tests/test_make_scripts.py` contracts the installer; none of them call paid APIs. `uv run python scripts/check_guards.py` checks real browser controls and `make check-desktop` checks real desktop AX in a local Chrome — both live checks make no model calls and skip cleanly when their environment is unavailable. Live examples and the recording scripts (`scripts/record_flights.py`, `scripts/render_demo.py`) make paid API calls; credentials and raw traces stay ignored. Run boundaries and raw evidence live in [docs/performance.md](docs/performance.md).
+`make build` runs all of them. Tests are offline — `tests/test_agent.py` contracts the loop, `tests/test_desktop*.py` and `tests/test_check_ax.py` contract the desktop layer against a fake AX backend, `tests/test_terminal.py` drives real local shells through the pty and tmux backends (tmux cases skip when tmux is absent), `tests/test_make_scripts.py` contracts the installer; none of them call paid APIs. `uv run python scripts/check_guards.py` checks real browser controls and `make check-desktop` checks real desktop AX in a local Chrome — both live checks make no model calls and skip cleanly when their environment is unavailable. Live examples and the recording scripts (`scripts/record_flights.py`, `scripts/render_demo.py`) make paid API calls; credentials and raw traces stay ignored. Run boundaries and raw evidence live in [docs/performance.md](docs/performance.md).
 
 ## Scope and limits
 

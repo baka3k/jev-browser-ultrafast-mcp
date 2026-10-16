@@ -1,0 +1,22 @@
+# Red Team Review — windows-uia-backend
+
+Reviewer: 1 adversarial reviewer (spawn), 2026-10-16. Angles: security, assumptions, failure modes/sequencing, repo-rule consistency, test-budget honesty. Citation audit: all `path:line` references in the plan verified accurate.
+
+**Verdict at review: plan needs revisions (5 must-fix). All 12 findings adjudicated; 12/12 accepted and applied to phase files the same day.**
+
+| # | Sev | Angle | Finding | Adjudication |
+|---|-----|-------|---------|--------------|
+| 1 | high | assumptions | `select` already exists in the model (`model.py:155` maps select→SELECT) and browser emits per-option actions — Phase 2 mischaracterized it as new vocabulary; emission shape (per-item vs option-grouped) was undecided | Accepted. Phase 2 rewritten: reuse existing machinery; desktop emits **per-item** actions; option-grouping rejected (degenerate single-option groups); divergence documented. |
+| 2 | high | consistency | `type` had no text source; `agent/agent.py:106-115` only generates text for `fill`; TYPE_TEXT cache rule silent for the new kind | Accepted. `type` redefined as **closed key-sequence vocabulary** (Enter/Tab/Escape/arrows) in the action's `text` field, no LLM helper, no agent.py change (desktop stays MCP-path-only; Agent genericization remains deferred). |
+| 3 | high | assumptions | Windows menu behavior (closed-menu pruning `tree.py:177-184`, focused-element-as-open-indicator) is load-bearing and `unknown`, with no spike question | Accepted. Spike gains the menu-model question + verdict; contingency added: Windows pruning-bypass capability flag, decided from spike evidence. Live check specifies two-step click → re-observe. |
+| 4 | medium | security | Basename allowlist collision + keystroke injection: mitigation was docs-only while `type` raises the stakes | Accepted. Path-qualified allowlist entries implemented now (matched against `QueryFullProcessImageName`, gathered in Phase 1's sweep); `type` foreground predicate checks the matched entry's PID set. |
+| 5 | medium | security | Foreground-check mechanism unspecified; SetFocus is itself a mutation left unlogged on refusal | Accepted. Predicate made exact (`GetForegroundWindow` → `GetWindowThreadProcessId` ∈ resolved PID set); SetFocus counts as part of the single logged attempt; refusal reports focus-was-set, never retried. |
+| 6 | medium | failure modes | Translation table omitted DESCRIPTION, HELP, MENU_BAR — attributes the shared walker reads unconditionally (`tree.py:71-76`, `:196-198`) | Accepted. Added to Phase 1 requirements + translation test table. |
+| 7 | medium | test budget | Unmapped behaviors: AXManualAccessibility no-op, lowest-PID policy, generic COMError→AXError, `omitted_actions` accounting, fresh()-gate refusals for new kinds | Accepted. ~5 test rows added across Phases 1-2 (one parameterized stale-guard test covers the three new kinds). |
+| 8 | medium | sequencing | Offline fake would mirror GitHub master, not the pinned 2.0.29 — "verified on macOS" overstated | Accepted. Phase 1: fake mirrors the 2.0.29 release source; spike step zero diffs the real import surface against the fake. |
+| 9 | low | consistency | Live-check flow put fill/click in the default run, contradicting the opt-in mutations policy | Accepted. Default run read-only (attach/observe/assert table); mutations behind `--mutations`, mirroring `check_ax.py`. |
+| 10 | low | assumptions | Per-Monitor DPI awareness set process-wide at import — dropped between research and phases | Accepted. Non-functional note added to Phase 1; probe output must state physical-px rects. |
+| 11 | low | failure modes | Guarded import catches only ImportError; force-installed `uiautomation` off-Windows can raise OSError/ValueError/AttributeError | Accepted. Guard broadened to `(ImportError, OSError, ValueError, AttributeError)`. |
+| 12 | low | security | Exe-name case sensitivity unspecified; Windows names are case-insensitive — layers could disagree | Accepted. Case-insensitive basename comparison on win32 via one shared helper (attach + allowlist), one test row. |
+
+Post-review test totals: Phase 1 ≈ 16 (justified +1 over ceiling), Phase 2 ≈ 14, Phase 3 ≈ 8, Phase 4 ≈ 5 → **≈ 43 for the feature**, marginally above the 40 soft ceiling; justification: 6 functions are red-team-mapped security/guard requirements that previously had no test. No test reduction was made to fit the ceiling.

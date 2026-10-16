@@ -1,7 +1,7 @@
 ---
 title: "Desktop-app automation layer (macOS AX) + jev-desktop MCP"
 description: "Add a desktop-app layer that reuses jev's indexed element-table loop over the macOS Accessibility API, with a separate jev-desktop MCP server, offline contract tests, and a live Chrome AX check."
-status: pending
+status: completed
 priority: P2
 effort: 22h
 issue: 
@@ -41,7 +41,7 @@ Scope mode: **HOLD** (auto-selected; user asked for clean design patterns, a sep
 
 ## Deferred (explicitly)
 
-- Windows/Linux backends, OCR/vision fallback, keyboard-synthesis (`CGEventPost`) path, `Agent` loop genericization (today it constructs `Browser` at `agent.py:20`), demo-inspector UI for desktop, scroll actions.
+- Windows/Linux backends (Windows UIA since picked up by [windows-uia-backend](../windows-uia-backend/plan.md); Linux AT-SPI still deferred), OCR/vision fallback, keyboard-synthesis (`CGEventPost`) path, `Agent` loop genericization (today it constructs `Browser` at `agent.py:20`), demo-inspector UI for desktop, scroll actions.
 - Note: "existing brains consume the table unchanged" is scoped to `model.action_space()` (kinds/fields) and the MCP path. The full Python `Agent` loop additionally reads `page["url"]` (`model.py:214`, `agent.py:136`) and stays browser-only until genericization.
 
 ## Success criteria
