@@ -254,6 +254,37 @@ Rules the host agent should follow:
 
 The same indexed-element loop for **desktop apps on macOS**, over the Accessibility (AX) API. The observation source changes; the contract does not: numbered elements, one operation + target per step, guard-checked execution, zero model calls and zero API keys.
 
+#### Registration
+
+`make install` never registers this server — opt in per agent or for all of them:
+
+```bash
+make install-all zcode                                                # one agent
+make install-all                                                      # every detected agent
+uv run python scripts/install_mcp.py --agent zcode --server jev-desktop
+uv run python scripts/install_mcp.py --status --server jev-desktop    # read-only status
+```
+
+The written entry has the same shape as any jev server, pointing at the `jev-desktop` entry point:
+
+```json
+{
+  "mcpServers": {
+    "jev-desktop": {
+      "type": "stdio",
+      "command": "/absolute/path/to/uv",
+      "args": [
+        "--directory", "/absolute/path/to/jev-ultrafast",
+        "run", "--env-file", "/absolute/path/to/jev-ultrafast/.env",
+        "jev-desktop"
+      ]
+    }
+  }
+}
+```
+
+Registration is idempotent and never writes credentials. After registering: **restart the agent session** so it picks up the new server, then grant **Accessibility** to the app that runs the agent — *System Settings → Privacy & Security → Accessibility* — because the AX permission follows the host app, not this process. The first `desktop_attach` fails without it; `make doctor` reports the missing permission (`Desktop AX` line). Verify registration any time with `--status` above.
+
 | Tool | Arguments | Does |
 | --- | --- | --- |
 | `desktop_attach` | `app` | Attach to one app by bundle id — allowlisted via `JEV_DESKTOP_ALLOW` (default: `com.google.Chrome` only) |
@@ -261,7 +292,7 @@ The same indexed-element loop for **desktop apps on macOS**, over the Accessibil
 | `desktop_act` | `action_id`, `text?` | Click (`AXPress`), type (`AXValue` write + read-back), or wait — stale decisions are refused |
 | `desktop_close` | — | Detach |
 
-Scope and safety: an AX-trusted process can drive *any* app on the machine, so the allowlist is deliberately tight, `make install` never registers this server, and the agent-side attach rejects anything outside `JEV_DESKTOP_ALLOW`. v1 covers app chrome UI — menu bar, tabs, fields, window controls — verified against Chrome ([spike](docs/plans/desktop-app-layer/spike-activation.md)); web content stays with the CDP browser layer. Live verification: `make check-desktop` (skips with an actionable reason when Chrome or the Accessibility permission is unavailable). See [jev_ultrafast/desktop/README.md](jev_ultrafast/desktop/README.md).
+Scope and safety: an AX-trusted process can drive *any* app on the machine, so the allowlist is deliberately tight and the agent-side attach rejects anything outside `JEV_DESKTOP_ALLOW`. Treat allowlist entries as grants: adding `com.apple.Terminal` (or any shell-capable app) hands the agent code execution. v1 covers app chrome UI — menu bar, tabs, fields, window controls — verified against Chrome ([spike](docs/plans/desktop-app-layer/spike-activation.md)); web content stays with the CDP browser layer. Live verification: `make check-desktop` (skips with an actionable reason when Chrome or the Accessibility permission is unavailable). See [jev_ultrafast/desktop/README.md](jev_ultrafast/desktop/README.md).
 
 ## Use as a library
 
